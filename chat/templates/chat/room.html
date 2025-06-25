@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>聊天室: {{ room_name }}</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; background-color: #e9f2f9; padding-top: 20px; color: #333; }
+        .chat-container { background-color: #ffffff; padding: 25px; border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); width: 90%; max-width: 800px; display: flex; flex-direction: column; }
+        h1 { color: #007bff; text-align: center; margin-bottom: 20px; }
+        #chat-log { width: 100%; height: 400px; border: 1px solid #cce0ff; border-radius: 8px; padding: 15px; margin-bottom: 15px; overflow-y: auto; resize: vertical; box-sizing: border-box; background-color: #f8faff; line-height: 1.5; font-size: 0.95em; }
+        .input-area { display: flex; gap: 10px; margin-top: 10px; }
+        #chat-message-input { flex-grow: 1; padding: 12px; border: 1px solid #cce0ff; border-radius: 6px; font-size: 1em; box-sizing: border-box; }
+        #chat-message-input:focus { border-color: #007bff; box-shadow: 0 0 0 3px rgba(0,123,255,0.25); outline: none; }
+        #chat-message-submit { padding: 12px 25px; background-color: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1.1em; transition: background-color 0.3s ease; }
+        #chat-message-submit:hover { background-color: #218838; }
+        .status-message { text-align: center; font-weight: bold; margin-top: 15px; }
+        .status-connected { color: #28a745; }
+        .status-connecting { color: #ffc107; }
+        .status-disconnected { color: #dc3545; }
+        .status-error { color: #dc3545; }
+        .message-timestamp { font-size: 0.85em; color: #666; margin-left: 8px; }
+        .message-user { font-weight: bold; color: #007bff; }
+        .system-message { color: #888; font-style: italic; }
+        @media (max-width: 600px) {
+            .chat-container { padding: 15px; width: 95%; }
+            #chat-log { height: 250px; padding: 10px; }
+            .input-area { flex-direction: column; gap: 5px; }
+            #chat-message-input { width: 100%; }
+            #chat-message-submit { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <h1>聊天室: {{ room_name }}</h1>
+        <div id="chat-log">
+            {% for message in messages %}
+                <div>
+                    <span class="message-user">{{ message.sender.username|default:"未登入用戶" }}</span>
+                    <span class="message-timestamp">[{{ message.timestamp|date:"Y-m-d H:i:s" }}]:</span>
+                    {{ message.content }}
+                </div>
+            {% endfor %}
+        </div>
+        <div class="input-area">
+            {% if request.user.is_authenticated %}
+                <input id="chat-message-input" type="text" placeholder="輸入您的消息..."/>
+                <input id="chat-message-submit" type="button" value="發送"/>
+            {% else %}
+                <input id="chat-message-input" type="text" placeholder="請登入後發言..." disabled/>
+                <input id="chat-message-submit" type="button" value="發送" disabled/>
+                <p style="margin-top: 10px; color: #dc3545;">您需要<a href="/admin/login/?next={{ request.path }}">登入</a>才能發言。</p>
+            {% endif %}
+        </div>
+        <div id="status-message" class="status-message status-connecting">狀態：正在連接...</div>
+    </div>
+
+    <script>
+        var roomName = "{{ room_name }}";
+        var chatLog = document.querySelector('#chat-log');
+        var chatMessageInput = document.querySelector('#chat-message-input');
+        var chatMessageSubmit = document.querySelector('#chat-message-submit');
+        var statusMessage = document.querySelector('#status-message');
+
+        // 加載歷史消息時滾動到底部
+        chatLog.scrollTop = chatLog.scrollHeight;
+
+        var webSocket;
+        var wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') +
+                    window.location.host +
+                    '/ws/chat/' + encodeURIComponent(roomName) + '/'; // 確保房間名已編碼
+
+        var reconnectAttempts = 0;
+        var maxReconnectAttempts = 10; // 最大重連次數
+
+        function setStatus(message, type) {
+            statusMessage.textContent = '狀態：' + message;
+            statusMessage.className = 'status-message status-' + type;
+        }
+
+        function appendMessage(user, message, timestamp) {
+            var messageDiv = document.createElement('div');
+            var userSpan = document.createElement('span');
+            userSpan.className = 'message-user';
+            userSpan.textContent = user;
+
+            var timestampSpan = document.createElement('span');
+            timestampSpan.className = 'message-timestamp';
+            // 嘗試解析 ISO 格式的時間戳，否則使用原始值
+            try {
+                const date = new Date(timestamp);
+                if (!isNaN(date)) { // 檢查是否是有效日期
+                    timestampSpan.textContent = '[' + date.toLocaleString() + ']:';
+                } else {
+                    timestampSpan.textContent = '[' + timestamp + ']:';
+                }
+            } catch (e) {
+                timestampSpan.textContent = '[' + timestamp + ']:';
+            }
+
+            var contentText = document.createTextNode(' ' + message);
+
+            messageDiv.appendChild(userSpan);
+            messageDiv.appendChild(timestampSpan);
+            messageDiv.appendChild(contentText);
+
+            if (user === '[系統]') {
+                messageDiv.classList.add('system-message');
+            }
+
+            chatLog.appendChild(messageDiv);
+            chatLog.scrollTop = chatLog.scrollHeight; // 自動滾動到底部
+        }
+
+        function connectWebSocket() {
+            if (webSocket && (webSocket.readyState === WebSocket.OPEN || webSocket.readyState === WebSocket.CONNECTING)) {
+                return; // 如果已經連接或正在連接，則不重複操作
+            }
+
+            if (reconnectAttempts >= maxReconnectAttempts) {
+                setStatus('重連失敗次數過多，請手動刷新頁面。', 'error');
+                console.error('Max reconnect attempts reached. Please refresh.');
+                return;
+            }
+
+            setStatus('正在連接...', 'connecting');
+            console.log('嘗試連接 WebSocket:', wsUrl);
+            webSocket = new WebSocket(wsUrl);
+
+            webSocket.onopen = function(e) {
+                appendMessage('[系統]', '連線成功！', new Date().toLocaleString());
+                setStatus('已連接', 'connected');
+                reconnectAttempts = 0; // 重置重連計數器
+                console.log('WebSocket opened:', e);
+            };
+
+            webSocket.onmessage = function(e) {
+                try {
+                    var data = JSON.parse(e.data);
+                    var message = data['message'];
+                    var user = data['user'];
+                    var timestamp = data['timestamp'] || new Date().toLocaleString(); 
+                    appendMessage(user, message, timestamp);
+                } catch (jsonError) {
+                    console.error('接收到無效的 JSON 消息:', e.data, jsonError);
+                    appendMessage('[系統]', '收到無效消息格式。', new Date().toLocaleString());
+                }
+            };
+
+            webSocket.onclose = function(e) {
+                appendMessage('[系統]', '連線斷開！', new Date().toLocaleString());
+                setStatus('連線斷開，嘗試重連...', 'disconnected');
+                console.error('WebSocket closed unexpectedly:', e);
+
+                reconnectAttempts++;
+                var delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000); // 指數退避，最大30秒
+                console.log('嘗試在 ' + (delay / 1000) + ' 秒後重連...');
+                setTimeout(connectWebSocket, delay); 
+            };
+
+            webSocket.onerror = function(e) {
+                appendMessage('[系統]', '連線錯誤！', new Date().toLocaleString());
+                setStatus('連線錯誤！', 'error');
+                console.error('WebSocket error:', e);
+                webSocket.close(); // 觸發 onclose 事件，以便重連邏輯處理
+            };
+        }
+
+        connectWebSocket(); // 初始連接嘗試
+
+        chatMessageInput.focus();
+        chatMessageInput.onkeyup = function(e) {
+            if (e.key === 'Enter') {
+                chatMessageSubmit.click();
+            }
+        };
+
+        chatMessageSubmit.onclick = function(e) {
+            var message = chatMessageInput.value.trim();
+            if (message && webSocket.readyState === WebSocket.OPEN) {
+                webSocket.send(JSON.stringify({
+                    'message': message
+                }));
+                chatMessageInput.value = ''; // 清空輸入框
+            } else if (!message) {
+                alert('消息不能為空！'); // 建議替換為更現代的 UI 提示
+            } else {
+                alert('WebSocket 連線未建立或已斷開，請稍候或刷新頁面。'); // 建議替換為更現代的 UI 提示
+            }
+        };
+    </script>
+</body>
+</html>

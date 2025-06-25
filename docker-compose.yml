@@ -1,0 +1,45 @@
+# realtime_chat_project/docker-compose.yml
+
+version: '3.9' # 建議使用較新的 Docker Compose 版本
+
+services:
+  # Django/Daphne 服務 (處理 HTTP 和 WebSocket)
+  web:
+    build:
+      context: . # 指定 Dockerfile 的路徑 (當前目錄)
+      dockerfile: Dockerfile # 指定 Dockerfile 名稱
+    container_name: realtime_chat_project_web # 使用變數
+    # 簡化後的命令，只啟動 daphne
+    command: daphne -b 0.0.0.0 -p 8000 realtime_chat_project.asgi:application
+    volumes:
+      - .:/app # 將主機當前目錄掛載到容器的 /app，方便開發時代碼熱重載
+    ports:
+      # 只需映射 daphne 的 8000 埠
+      - "8000:8000"
+    env_file:
+      - .env # 載入 .env 文件中的環境變數
+    depends_on:
+      - redis # 確保 redis 服務先啟動
+    networks:
+      - chat_network # 使用自定義網路
+
+  # Redis 服務 (Channel Layer)
+  redis:
+    image: redis/redis-stack-server:latest # 使用 Redis Stack 映像檔，包含 RedisInsight
+    container_name: realtime_chat_project_redis # 使用變數
+    ports:
+      - "6379:6379" # 映射 Redis 埠
+    command: redis-server --appendonly yes # 啟動 Redis 並啟用 AOF 持久化
+    volumes:
+      - redis_data:/data # 持久化 Redis 數據
+    networks:
+      - chat_network # 使用自定義網路
+
+# 定義一個自定義網路，讓服務可以透過服務名互相通訊
+networks:
+  chat_network:
+    driver: bridge
+
+# 定義數據卷，用於持久化 Redis 數據
+volumes:
+  redis_data:

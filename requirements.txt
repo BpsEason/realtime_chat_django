@@ -1,0 +1,20 @@
+# Python 依賴包列表，用於 pip install -r requirements.txt
+
+Django>=4.2,<5.1
+daphne>=4.0,<5.0
+channels>=4.0,<5.0
+channels_redis>=4.0,<5.0
+djangorestframework>=3.14,<4.1
+python-decouple>=3.8,<4.0 # 已啟用，用於環境變數管理
+
+# 如果使用 JWT 認證，請取消註解
+# djangorestframework-simplejwt>=5.3,<6.0
+
+# 如果在生產環境中使用 PostgreSQL
+# psycopg2-binary>=2.9,<3.0
+
+# 測試工具 (可在開發環境安裝)
+# pytest
+# pytest-django
+# coverage
+# locust # 壓力測試工具
