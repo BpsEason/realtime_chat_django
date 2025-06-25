@@ -1,6 +1,6 @@
 # 即時聊天應用程式
 
-這是一個基於 **Django** 和 **Django Channels** 構建的即時聊天應用程式，支援多個聊天室並使用 WebSocket 傳遞消息。專案包含 REST API 和消息持久化功能，適合本地開發與測試。
+這是一個基於 **Django** 和 **Django Channels** 構建的即時聊天應用程式，支援多用戶聊天室並使用 WebSocket 傳遞消息。專案包含 REST API 和消息持久化功能，適合本地開發與測試。
 
 ## 功能
 - 即時消息傳遞（WebSocket 支援）。
@@ -31,7 +31,7 @@ graph TD
 - **Django 伺服器**：處理 HTTP 請求並渲染頁面。
 - **Daphne 伺服器**：管理 WebSocket 連線，依賴 Redis 頻道層實現群組廣播。
 - **ChatConsumer**：處理 WebSocket 消息並觸發廣播。
-- **Redis 頻道層**：負責分發消息到同一聊天室的全部客戶端，確保多用戶同步。
+- **Redis 頻道層**：負責分發消息到同一聊天室的全部客戶端。
 - **資料庫**：儲存聊天記錄。
 - **SendMessageAPI**：提供 REST API 功能。
 
@@ -107,12 +107,12 @@ graph TD
 ```python
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        # 獲取聊天室名稱並建立群組名稱
+        # 獲取聊天室名稱並生成群組名稱
         self.room_name = self.scope['url_route']['kwargs']['room_name']
         self.room_group_name = f'chat_{self.room_name}'
         # 將當前連線加入聊天室群組
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
-        # 獲取當前用戶，匿名時設為預設名稱
+        # 獲取用戶資訊，匿名時使用預設名稱
         self.user = self.scope['user']
         username = self.user.username if self.user.is_authenticated else "未登入用戶"
         # 接受 WebSocket 連線
@@ -144,7 +144,7 @@ class SendMessageAPI(APIView):
     def post(self, request, room_name):
         # 獲取請求中的消息內容
         message = request.data.get('message')
-        # 檢查消息是否有效
+        # 驗證消息是否有效
         if not message or not message.strip():
             return Response({"error": "消息內容不可為空"}, status=400)
         current_timestamp = timezone.now()
@@ -164,7 +164,7 @@ class SendMessageAPI(APIView):
 var wsUrl = 'ws://' + window.location.host + '/ws/chat/' + encodeURIComponent(roomName) + '/';
 // 建立 WebSocket 連線
 var webSocket = new WebSocket(wsUrl);
-// 監聽接收到的消息並顯示
+// 監聽接收到的消息並更新頁面
 webSocket.onmessage = function(e) {
     var data = JSON.parse(e.data);
     appendMessage(data.user, data.message, data.timestamp);
@@ -178,39 +178,42 @@ webSocket.onclose = function(e) {
 ## 常見問題 (FAQ)
 
 ### 1. 為什麼選擇 Django Channels 而不是傳統 HTTP 請求？
-- **原因**：傳統 HTTP 是無狀態的請求/回應模型，需不斷輪詢伺服器，效率低且延遲高。Django Channels 使用 WebSocket 提供持久雙向連線，伺服器可即時推送消息，減少網路負擔並提升即時性。
+- **原因**：傳統 HTTP 是無狀態的請求/回應模型，需輪詢伺服器，效率低且延遲高。Django Channels 使用 WebSocket 提供持久雙向連線，實現即時消息推送，降低網路負擔。
 
 ### 2. Redis 在專案中扮演什麼角色？
-- **角色**：Redis 作為 Django Channels 的頻道層，負責不同 Daphne 實例間的訊息通訊與廣播。當用戶發送消息，Redis 將其分發給所有訂閱同一聊天室頻道的消費者，確保多用戶同步。其高速性能是訊息中介的關鍵。
+- **角色**：Redis 作為 Django Channels 的頻道層，負責不同 Daphne 實例間的訊息通訊與廣播。當用戶發送消息，Redis 分發給所有訂閱同一聊天室頻道的消費者，確保多用戶同步。
 
 ### 3. 如何處理 WebSocket 連線的認證與授權？
-- **方式**：使用 `channels.auth.AuthMiddlewareStack` 將 Django 會話資訊附加到 `scope['user']`，讓 `ChatConsumer` 檢查登入狀態。僅認證用戶可發送消息，可在 `connect` 或 `receive` 中添加額外權限邏輯。
+- **方式**：使用 `channels.auth.AuthMiddlewareStack` 將 Django 會話資訊附加到 `scope['user']`，讓 `ChatConsumer` 檢查登入狀態。僅認證用戶可發送消息，可在 `connect` 或 `receive` 添加權限邏輯。
 
 ### 4. `sync_to_async` 和 `async_to_sync` 的作用？
 - **作用**：
-  - `sync_to_async`：在異步環境（如 `ChatConsumer`）中執行同步操作（如 ORM 的 `ChatMessage.objects.create`），避免阻塞事件迴圈。
+  - `sync_to_async`：在異步環境（如 `ChatConsumer`）中執行同步 ORM 操作（如 `ChatMessage.objects.create`），避免阻塞。
   - `async_to_sync`：在同步環境（如 REST API）中呼叫異步操作（如 `group_send`），橋接同步與異步。
 
 ### 5. SendMessageAPI 的用途與 WebSocket 區別？
-- **用途**：SendMessageAPI 為 RESTful 端點，允許外部系統（如 Webhook 或排程任務）透過 HTTP POST 發送消息到聊天室。
+- **用途**：SendMessageAPI 為 RESTful 端點，允許外部系統（如 Webhook）透過 HTTP POST 發送消息。
 - **區別**：
-  - 連線：REST API 為單次請求/回應，WebSocket 為持久雙向連線。
-  - 即時性：WebSocket 提供即時推送，REST API 需依賴其他機制接收消息。
-  - 用途：WebSocket 適合客戶端即時互動，REST API 適用於異步整合。
+  - 連線：REST API 為單次請求，WebSocket 為持久連線。
+  - 即時性：WebSocket 即時推送，REST API 需其他機制接收。
+  - 用途：WebSocket 適合即時互動，REST API 適用於異步整合。
 
 ### 6. room.html 中 WebSocket 重連機制？
-- **實現**：`webSocket.onclose` 觸發時，設定 1 秒延遲後重連。生產環境建議採用指數退避策略並設定最大重連次數，減少資源消耗。
+- **實現**：`webSocket.onclose` 觸發時，設定 1 秒延遲重連。生產環境建議用指數退避並設定最大次數。
 
 ### 7. 如何部署到生產環境？
 - **步驟**：
-  - **數據庫**：替換為 PostgreSQL 或 MySQL。
-  - **Web 伺服器**：使用 Nginx/Apache 處理靜態文件、負載均衡和 SSL。
+  - **數據庫**：使用 PostgreSQL 或 MySQL。
+  - **Web 伺服器**：配置 Nginx/Apache 處理靜態文件與 SSL。
   - **ASGI 伺服器**：運行 `gunicorn --worker-class=uvicorn.workers.UvicornWorker`。
   - **環境變數**：設定 `DEBUG=False`，安全管理 `SECRET_KEY`。
-  - **日誌**：配置監控日誌（如 ELK stack）。
-  - **SSL/TLS**：啟用加密保護連線。
-  - **持久化**：確保 Redis 和資料庫數據持久化。
-  - **Docker（可選）**：使用 Docker Compose 協調服務。
+  - **日誌**：配置監控日誌（如 ELK）。
+  - **SSL/TLS**：啟用加密。
+  - **持久化**：確保 Redis 和資料庫數據持久。
+  - **Docker（可選）**：用 Docker Compose 協調服務。
+
+### 8. Django 伺服器為什麼能回應給客戶端瀏覽器？
+- **原因**：Django 伺服器基於 HTTP 協議，接收客戶端請求（如 `/chat/`）後，通過 `urls.py` 路由到視圖函數，渲染 `index.html` 或 `room.html` 並生成 HTTP 回應。回應透過 TCP 傳回瀏覽器顯示，結合模板引擎實現動態頁面。
 
 ## 貢獻
 1. Fork 倉庫。
