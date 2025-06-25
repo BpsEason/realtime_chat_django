@@ -13,17 +13,20 @@
 
 ```mermaid
 graph TD
-    A[客戶端瀏覽器] -->|HTTP| B[Django 伺服器]
-    A -->|WebSocket| C[Daphne 伺服器]
-    B -->|渲染| D[模板：index.html, room.html]
-    B -->|回應| A
-    C -->|處理| E[ChatConsumer]
-    E -->|群組廣播| F[Redis 頻道層]
-    F -->|分發| C
-    E -->|儲存| G[資料庫]
-    B -->|API| H[SendMessageAPI]
-    H -->|發送| F
-    G -->|加載| D
+    A[客戶端瀏覽器] -->|HTTP 請求| B[Django 伺服器]
+    B -->|路由| C[urls.py]
+    C -->|視圖處理| D[views.py]
+    D -->|渲染模板| E[模板：index.html, room.html]
+    D -->|封裝回應| F[HttpResponse]
+    B -->|TCP 傳輸| A
+    A -->|WebSocket| G[Daphne 伺服器]
+    G -->|處理| H[ChatConsumer]
+    H -->|群組廣播| I[Redis 頻道層]
+    I -->|分發| G
+    H -->|儲存| J[資料庫]
+    D -->|API| K[SendMessageAPI]
+    K -->|發送| I
+    J -->|加載| E
 ```
 
 **說明**：
