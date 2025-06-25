@@ -30,13 +30,11 @@ graph TD
 ```
 
 **說明**：
-- **客戶端瀏覽器**：通過 `index.html` 選擇聊天室，`room.html` 進行聊天。
-- **Django 伺服器**：處理 HTTP 請求並渲染頁面。
-- **Daphne 伺服器**：管理 WebSocket 連線，依賴 Redis 頻道層實現群組廣播。
-- **ChatConsumer**：處理 WebSocket 消息並觸發廣播。
-- **Redis 頻道層**：負責分發消息到同一聊天室的全部客戶端。
-- **資料庫**：儲存聊天記錄。
-- **SendMessageAPI**：提供 REST API 功能。
+- **HTTP 流程**：
+  - `客戶端瀏覽器` 發送 HTTP 請求，`Django 伺服器` 通過 `urls.py` 路由到 `views.py`，渲染 `index.html` 或 `room.html`，生成 `HttpResponse`，並通過 TCP 傳回客戶端。
+- **WebSocket 流程**：
+  - `Daphne 伺服器` 處理 WebSocket 連線，`ChatConsumer` 管理消息，`Redis 頻道層` 負責廣播，`資料庫` 儲存記錄。
+- **API 集成**：`SendMessageAPI` 提供 REST 端點，與 WebSocket 協作。
 
 ## 環境要求
 - Python 3.10+
@@ -181,7 +179,7 @@ webSocket.onclose = function(e) {
 ## 常見問題 (FAQ)
 
 ### 1. 為什麼選擇 Django Channels 而不是傳統 HTTP 請求？
-- **原因**：傳統 HTTP 需輪詢伺服器，效率低且延遲高。Django Channels 使用 WebSocket 提供持久連線，實現即時推送。
+- **原因**：傳統 HTTP 需輪詢，效率低且延遲高。Django Channels 使用 WebSocket 提供持久連線，實現即時推送。
 
 ### 2. Redis 在專案中扮演什麼角色？
 - **角色**：Redis 作為頻道層，負責不同 Daphne 實例間的訊息廣播，確保多用戶同步。
@@ -213,7 +211,7 @@ webSocket.onclose = function(e) {
   - **Docker（可選）**：用 Docker Compose。
 
 ### 8. Django 伺服器渲染模板後如何回到客戶端？
-- **過程**：客戶端發送 HTTP 請求，`urls.py` 路由到視圖，`render` 將 `index.html` 或 `room.html` 渲染成 HTML，封裝成 `HttpResponse`，通過 TCP 傳回瀏覽器顯示。
+- **過程**：客戶端發送 HTTP 請求，`urls.py` 路由到 `views.py`，`render` 將 `index.html` 或 `room.html` 渲染成 HTML，封裝成 `HttpResponse`，通過 TCP 傳回瀏覽器顯示。
 
 ## 貢獻
 1. Fork 倉庫。
