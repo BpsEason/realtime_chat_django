@@ -16,9 +16,10 @@
 
 ```mermaid
 graph TD
-    A[客戶端瀏覽器] -->|HTTP| B[Django HTTP 伺服器]
+    A[客戶端瀏覽器] -->|HTTP 請求| B[Django HTTP 伺服器]
     A -->|WebSocket| C[Daphne ASGI 伺服器]
     B -->|渲染| D[HTML 模板：index.html, room.html]
+    B -->|HTTP 回應| A
     C -->|路由| E[ChatConsumer]
     E -->|群組消息| F[Redis 頻道層]
     E -->|儲存消息| G[SQLite/PostgreSQL 資料庫]
