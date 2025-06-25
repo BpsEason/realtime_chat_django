@@ -187,3 +187,8 @@ webSocket.onclose = function(e) {
 4. 推送：`git push origin feature/name`。
 5. 提交 PR。
 
+## 許可證
+採用 MIT 許可證（建議添加 `LICENSE` 檔案）。
+
+## 倉庫連結
+[https://github.com/BpsEason/realtime_chat_project](https://github.com/BpsEason/realtime_chat_project)
