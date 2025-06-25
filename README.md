@@ -178,42 +178,39 @@ webSocket.onclose = function(e) {
 ## 常見問題 (FAQ)
 
 ### 1. 為什麼選擇 Django Channels 而不是傳統 HTTP 請求？
-- **原因**：傳統 HTTP 是無狀態的請求/回應模型，需輪詢伺服器，效率低且延遲高。Django Channels 使用 WebSocket 提供持久雙向連線，實現即時消息推送，降低網路負擔。
+- **原因**：傳統 HTTP 需輪詢伺服器，效率低且延遲高。Django Channels 使用 WebSocket 提供持久連線，實現即時推送。
 
 ### 2. Redis 在專案中扮演什麼角色？
-- **角色**：Redis 作為 Django Channels 的頻道層，負責不同 Daphne 實例間的訊息通訊與廣播。當用戶發送消息，Redis 分發給所有訂閱同一聊天室頻道的消費者，確保多用戶同步。
+- **角色**：Redis 作為頻道層，負責不同 Daphne 實例間的訊息廣播，確保多用戶同步。
 
 ### 3. 如何處理 WebSocket 連線的認證與授權？
-- **方式**：使用 `channels.auth.AuthMiddlewareStack` 將 Django 會話資訊附加到 `scope['user']`，讓 `ChatConsumer` 檢查登入狀態。僅認證用戶可發送消息，可在 `connect` 或 `receive` 添加權限邏輯。
+- **方式**：`AuthMiddlewareStack` 將會話資訊附加到 `scope['user']`，`ChatConsumer` 檢查登入狀態。
 
 ### 4. `sync_to_async` 和 `async_to_sync` 的作用？
 - **作用**：
-  - `sync_to_async`：在異步環境（如 `ChatConsumer`）中執行同步 ORM 操作（如 `ChatMessage.objects.create`），避免阻塞。
-  - `async_to_sync`：在同步環境（如 REST API）中呼叫異步操作（如 `group_send`），橋接同步與異步。
+  - `sync_to_async`：在異步環境執行同步 ORM 操作。
+  - `async_to_sync`：在同步環境呼叫異步操作。
 
 ### 5. SendMessageAPI 的用途與 WebSocket 區別？
-- **用途**：SendMessageAPI 為 RESTful 端點，允許外部系統（如 Webhook）透過 HTTP POST 發送消息。
-- **區別**：
-  - 連線：REST API 為單次請求，WebSocket 為持久連線。
-  - 即時性：WebSocket 即時推送，REST API 需其他機制接收。
-  - 用途：WebSocket 適合即時互動，REST API 適用於異步整合。
+- **用途**：允許外部系統透過 HTTP POST 發送消息。
+- **區別**：REST API 為單次請求，WebSocket 為持久連線；前者非即時，後者適合互動。
 
 ### 6. room.html 中 WebSocket 重連機制？
-- **實現**：`webSocket.onclose` 觸發時，設定 1 秒延遲重連。生產環境建議用指數退避並設定最大次數。
+- **實現**：`onclose` 後 1 秒重連，生產環境建議指數退避。
 
 ### 7. 如何部署到生產環境？
 - **步驟**：
-  - **數據庫**：使用 PostgreSQL 或 MySQL。
-  - **Web 伺服器**：配置 Nginx/Apache 處理靜態文件與 SSL。
-  - **ASGI 伺服器**：運行 `gunicorn --worker-class=uvicorn.workers.UvicornWorker`。
-  - **環境變數**：設定 `DEBUG=False`，安全管理 `SECRET_KEY`。
-  - **日誌**：配置監控日誌（如 ELK）。
+  - **數據庫**：用 PostgreSQL 或 MySQL。
+  - **Web 伺服器**：配置 Nginx/Apache 與 SSL。
+  - **ASGI 伺服器**：運行 `gunicorn`。
+  - **環境變數**：設定 `DEBUG=False`。
+  - **日誌**：配置監控。
   - **SSL/TLS**：啟用加密。
-  - **持久化**：確保 Redis 和資料庫數據持久。
-  - **Docker（可選）**：用 Docker Compose 協調服務。
+  - **持久化**：確保數據持久。
+  - **Docker（可選）**：用 Docker Compose。
 
-### 8. Django 伺服器為什麼能回應給客戶端瀏覽器？
-- **原因**：Django 伺服器基於 HTTP 協議，接收客戶端請求（如 `/chat/`）後，通過 `urls.py` 路由到視圖函數，渲染 `index.html` 或 `room.html` 並生成 HTTP 回應。回應透過 TCP 傳回瀏覽器顯示，結合模板引擎實現動態頁面。
+### 8. Django 伺服器渲染模板後如何回到客戶端？
+- **過程**：客戶端發送 HTTP 請求，`urls.py` 路由到視圖，`render` 將 `index.html` 或 `room.html` 渲染成 HTML，封裝成 `HttpResponse`，通過 TCP 傳回瀏覽器顯示。
 
 ## 貢獻
 1. Fork 倉庫。
