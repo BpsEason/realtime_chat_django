@@ -44,7 +44,7 @@ graph TD
 
 1. **克隆倉庫**：
    ```bash
-   git clone [https://github.com/BpsEason/realtime_chat_project.git](https://github.com/BpsEason/realtime_chat_django.git)
+   git clone https://github.com/BpsEason/realtime_chat_django.git
    cd realtime_chat_project
    ```
 
